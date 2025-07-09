@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Bombtanical Gardens Grid</title>
+  <style>
+    body {
+      font-family: sans-serif;
+      background-color: #e7f7e1;
+      display: flex;
+      justify-content: center;
+      padding: 40px;
+    }
+
+    .board-container {
+      position: relative;
+      width: 1500px;
+      height: 1200px;
+      background-image: url('bombtanical_gardens_board.png');
+      background-size: cover;
+      background-position: center;
+      border: 2px solid #444;
+    }
+
+    .grid-box {
+      position: absolute;
+      width: 125px;
+      height: 125px;
+      font-size: 100px;
+      text-align: center;
+      border: 2px solid #333;
+      background-color: rgba(255, 255, 255, 0.8);
+    }
+
+    .grid-box.invalid {
+      border: 2px solid red;
+      animation: shake 0.2s;
+    }
+
+    .grid-box.error {
+      background-color: rgba(255, 100, 100, 0.8);
+    }
+
+    @keyframes shake {
+      0% { transform: translateX(0); }
+      25% { transform: translateX(-3px); }
+      50% { transform: translateX(3px); }
+      75% { transform: translateX(-3px); }
+      100% { transform: translateX(0); }
+    }
+
+    .side-panel {
+      margin-left: 40px;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+
+    .sum-container {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .sum-box {
+      width: 80px;
+      height: 30px;
+      font-size: 18px;
+      text-align: center;
+    }
+
+    button {
+      padding: 10px 20px;
+      font-size: 16px;
+    }
+
+    .message {
+      font-size: 16px;
+      color: darkred;
+      font-weight: bold;
+    }
+
+    .message.success {
+      color: green;
+    }
+  </style>
+</head>
+<body>
+  <div style="display: flex;">
+    <div class="board-container" id="board"></div>
+
+    <div class="side-panel">
+      <div class="sum-container">
+        <label for="sumBox">Sum:</label>
+        <input id="sumBox" class="sum-box" type="number" readonly />
+      </div>
+      <button onclick="checkGrid()">Check</button>
+      <button onclick="clearGrid()">Clear</button>
+      <div class="message" id="messageBox"></div>
+    </div>
+  </div>
+
+  <script>
+    const board = document.getElementById('board');
+    const sumBox = document.getElementById('sumBox');
+    const messageBox = document.getElementById('messageBox');
+    const inputs = [];
+    let gridState = [...Array(4)].map(() => Array(4).fill(""));
+    let firstMoveMade = false;
+
+    const startX = 670;
+    const startY = 355;
+    const gap = 142;
+
+    for (let row = 0; row < 4; row++) {
+      for (let col = 0; col < 4; col++) {
+        const input = document.createElement('input');
+        input.className = 'grid-box';
+        input.style.left = `${startX + col * gap}px`;
+        input.style.top = `${startY + row * gap}px`;
+        input.setAttribute('maxlength', '3');
+        input.dataset.row = row;
+        input.dataset.col = col;
+
+        input.addEventListener('input', () => {
+          const value = input.value.trim();
+          const r = parseInt(input.dataset.row);
+          const c = parseInt(input.dataset.col);
+
+          if (!/^\d+$/.test(value) && value !== "*") {
+            input.value = "";
+            return;
+          }
+
+          if (!firstMoveMade || isAdjacentToOccupied(r, c)) {
+            gridState[r][c] = value;
+            input.classList.remove('invalid', 'error');
+            firstMoveMade = true;
+            updateSum();
+          } else {
+            input.value = "";
+            input.classList.add('invalid');
+            setTimeout(() => input.classList.remove('invalid'), 300);
+          }
+        });
+
+        inputs.push(input);
+        board.appendChild(input);
+      }
+    }
+
+    function isAdjacentToOccupied(row, col) {
+      const directions = [[-1,0],[1,0],[0,-1],[0,1]];
+      return directions.some(([dr, dc]) => {
+        const nr = row + dr;
+        const nc = col + dc;
+        return nr >= 0 && nr < 4 && nc >= 0 && nc < 4 && gridState[nr][nc] !== "";
+      });
+    }
+
+    function updateSum() {
+      let sum = 0;
+      for (let r = 0; r < 4; r++) {
+        for (let c = 0; c < 4; c++) {
+          const val = gridState[r][c];
+          if (/^\d+$/.test(val)) sum += parseInt(val);
+        }
+      }
+      sumBox.value = sum;
+    }
+
+    function clearGrid() {
+      inputs.forEach(input => {
+        input.value = "";
+        input.classList.remove("error");
+      });
+      gridState = [...Array(4)].map(() => Array(4).fill(""));
+      firstMoveMade = false;
+      sumBox.value = "";
+      messageBox.textContent = "";
+    }
+
+    function countSurroundingBombs(row, col) {
+      const directions = [
+        [-1, -1], [-1, 0], [-1, 1],
+        [ 0, -1],          [ 0, 1],
+        [ 1, -1], [ 1, 0], [ 1, 1],
+      ];
+      return directions.reduce((count, [dr, dc]) => {
+        const nr = row + dr;
+        const nc = col + dc;
+        if (nr >= 0 && nr < 4 && nc >= 0 && nc < 4 && gridState[nr][nc] === "*") {
+          return count + 1;
+        }
+        return count;
+      }, 0);
+    }
+
+    function checkGrid() {
+      messageBox.textContent = "";
+      messageBox.classList.remove("success");
+      let filled = 0;
+      let bombs = 0;
+      let numbers = 0;
+      let errors = [];
+
+      // Reset visuals
+      inputs.forEach(input => input.classList.remove("error"));
+
+      for (let r = 0; r < 4; r++) {
+        for (let c = 0; c < 4; c++) {
+          const val = gridState[r][c];
+          if (val === "") {
+            errors.push("Grid is not completely filled.");
+            break;
+          } else if (val === "*") {
+            bombs++;
+          } else if (/^\d+$/.test(val)) {
+            numbers++;
+            const expected = parseInt(val);
+            const actual = countSurroundingBombs(r, c);
+            if (expected !== actual) {
+              errors.push(`Mismatch at row ${r + 1}, col ${c + 1}`);
+              const idx = r * 4 + c;
+              inputs[idx].classList.add("error");
+            }
+          }
+        }
+      }
+
+      if (Math.abs(numbers - bombs) > 1) {
+        errors.push(`Number-bomb count imbalance (numbers: ${numbers}, bombs: ${bombs})`);
+      }
+
+      if (errors.length === 0) {
+        messageBox.textContent = "✅ Grid is valid!";
+        messageBox.classList.add("success");
+      } else {
+        messageBox.textContent = "❌ " + errors.join(" | ");
+      }
+    }
+  </script>
+</body>
+</html>
